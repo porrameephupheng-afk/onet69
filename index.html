@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบวิเคราะห์ข้อมูลคะแนนเฉลี่ย O-NET</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse (CSV Parser) CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts: Sarabun & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Sarabun', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for beautiful UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800 antialiased">
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Header Navigation -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-200">
+                        <i data-lucide="bar-chart-3" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-slate-900 leading-tight">O-NET Score Analytics</h1>
+                        <p class="text-xs text-slate-500">ระบบแดชบอร์ดวิเคราะห์ผลคะแนนสอบและสถิติรายปี</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span id="data-status-badge" class="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        ใช้งานข้อมูลจำลอง (กรุณาอัปโหลดไฟล์จริง)
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+            
+            <!-- Upload & Drag/Drop Area -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div class="space-y-1 text-center md:text-left">
+                        <h2 class="text-base font-semibold text-slate-900 flex items-center justify-center md:justify-start gap-2">
+                            <i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-500"></i>
+                            อัปโหลดข้อมูลคะแนนสอบของท่าน
+                        </h2>
+                        <p class="text-sm text-slate-500">
+                            รองรับไฟล์ CSV ที่ท่านอัปโหลดในระบบ เช่น <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs text-indigo-600 font-mono">cd50c7d1-9113-42b6-be94-0454f6a52111.csv</code> เพื่อคำนวณและประมวลผลทันที
+                        </p>
+                    </div>
+                    <div class="w-full md:w-auto">
+                        <label class="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-xl px-6 py-5 cursor-pointer bg-slate-50 hover:bg-indigo-50/20 transition-all duration-200 group">
+                            <input type="file" id="csv-file-input" accept=".csv" class="hidden" />
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-500 group-hover:text-indigo-600 group-hover:border-indigo-200 transition-colors">
+                                    <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                                </div>
+                                <div class="text-left">
+                                    <p class="text-sm font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">คลิกเพื่ออัปโหลดไฟล์ CSV</p>
+                                    <p class="text-xs text-slate-400">หรือลากไฟล์มาวางในพื้นที่นี้</p>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Filters & Controls -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+                    <h3 class="font-semibold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="sliders-horizontal" class="w-4.5 h-4.5 text-indigo-500"></i>
+                        ตัวกรองข้อมูลและเปรียบเทียบ
+                    </h3>
+                    <button id="btn-reset-filters" class="text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> ล้างตัวกรองทั้งหมด
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Year Filter -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-medium text-slate-500 block">ปีการศึกษา (YEAR_COURSE)</label>
+                        <select id="filter-year" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <!-- Grade Filter -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-medium text-slate-500 block">ระดับชั้น (GRADE_NAME)</label>
+                        <select id="filter-grade" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <!-- Region Filter -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-medium text-slate-500 block">ภูมิภาค (REGION_NAME)</label>
+                        <select id="filter-region" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <!-- Subject Filter -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-medium text-slate-500 block">รายวิชา (SBJ_NAME)</label>
+                        <select id="filter-subject" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Metrics Overview (KPIs) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- KPI 1 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center gap-5 relative overflow-hidden group">
+                    <div class="p-3.5 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="users" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-400">จำนวนนักเรียนที่ลงสอบสะสม</p>
+                        <p id="kpi-student-count" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">รวมทุกพื้นที่และทุกปี</p>
+                    </div>
+                    <div class="absolute right-0 bottom-0 translate-x-3 translate-y-3 opacity-5 pointer-events-none">
+                        <i data-lucide="users" class="w-24 h-24"></i>
+                    </div>
+                </div>
+                <!-- KPI 2 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center gap-5 relative overflow-hidden group">
+                    <div class="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="award" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-400">คะแนนเฉลี่ยโดยรวม</p>
+                        <p id="kpi-avg-score" class="text-2xl font-bold text-slate-900 mt-1">0.00</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">คะแนนเฉลี่ยจากประชากรทั้งหมด</p>
+                    </div>
+                    <div class="absolute right-0 bottom-0 translate-x-3 translate-y-3 opacity-5 pointer-events-none">
+                        <i data-lucide="award" class="w-24 h-24"></i>
+                    </div>
+                </div>
+                <!-- KPI 3 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center gap-5 relative overflow-hidden group">
+                    <div class="p-3.5 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="trending-up" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-400">คะแนนเฉลี่ยสูงสุดของกลุ่ม</p>
+                        <p id="kpi-max-score" class="text-2xl font-bold text-slate-900 mt-1">0.00</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">สถิติคะแนนเฉลี่ยสูงสุด</p>
+                    </div>
+                    <div class="absolute right-0 bottom-0 translate-x-3 translate-y-3 opacity-5 pointer-events-none">
+                        <i data-lucide="trending-up" class="w-24 h-24"></i>
+                    </div>
+                </div>
+                <!-- KPI 4 -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center gap-5 relative overflow-hidden group">
+                    <div class="p-3.5 bg-rose-50 text-rose-600 rounded-xl group-hover:scale-105 transition-transform">
+                        <i data-lucide="trending-down" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-400">คะแนนเฉลี่ยต่ำสุดของกลุ่ม</p>
+                        <p id="kpi-min-score" class="text-2xl font-bold text-slate-900 mt-1">0.00</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">สถิติคะแนนเฉลี่ยต่ำสุด</p>
+                    </div>
+                    <div class="absolute right-0 bottom-0 translate-x-3 translate-y-3 opacity-5 pointer-events-none">
+                        <i data-lucide="trending-down" class="w-24 h-24"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytical Charts -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Subject Performance Bar Chart -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm lg:col-span-2 flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h4 class="font-semibold text-slate-900">คะแนนเฉลี่ยสะสมแยกตามวิชา</h4>
+                            <p class="text-xs text-slate-400">เปรียบเทียบคะแนนวิชาภาษาไทย ภาษาอังกฤษ คณิตศาสตร์ และวิทยาศาสตร์</p>
+                        </div>
+                    </div>
+                    <div class="relative h-[300px] w-full flex items-center justify-center">
+                        <canvas id="subjectChart"></canvas>
+                    </div>
+                </div>
+                <!-- Region Radar/Doughnut Chart -->
+                <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h4 class="font-semibold text-slate-900">คะแนนเฉลี่ยตามภูมิภาค</h4>
+                            <p class="text-xs text-slate-400">จำแนกตามเขตและภาคพื้นที่การศึกษา</p>
+                        </div>
+                    </div>
+                    <div class="relative h-[300px] w-full flex items-center justify-center">
+                        <canvas id="regionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Yearly Trend Line Chart -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h4 class="font-semibold text-slate-900">แนวโน้มผลคะแนนเฉลี่ย (ปีการศึกษา 2561 - 2568)</h4>
+                        <p class="text-xs text-slate-400">เส้นเปรียบเทียบแนวโน้มประสิทธิภาพคะแนนของแต่ละวิชาในแต่ละปีการศึกษา</p>
+                    </div>
+                </div>
+                <div class="relative h-[320px] w-full">
+                    <canvas id="yearlyTrendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Detailed Data Table Section -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                        <h4 class="font-semibold text-slate-900">รายละเอียดตารางข้อมูล</h4>
+                        <p class="text-xs text-slate-400">สแกน ค้นหา หรือส่งออกชุดข้อมูล O-NET เป็นไฟล์ย่อยตามการกรองปัจจุบัน</p>
+                    </div>
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="relative w-full sm:w-64">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3.5"></i>
+                            <input type="text" id="table-search" placeholder="ค้นหาตามภูมิภาค, วิชา..." class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                        </div>
+                        <button id="btn-export-csv" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 text-sm font-medium transition-colors shadow-sm shadow-indigo-100 whitespace-nowrap">
+                            <i data-lucide="download" class="w-4 h-4"></i> ส่งออกข้อมูล (CSV)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Container -->
+                <div class="overflow-x-auto w-full">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50 border-b border-slate-100 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                                <th class="px-6 py-4">ปีการศึกษา</th>
+                                <th class="px-6 py-4">ระดับชั้น</th>
+                                <th class="px-6 py-4">ภูมิภาค</th>
+                                <th class="px-6 py-4">วิชา</th>
+                                <th class="px-6 py-4 text-right">จำนวนผู้เข้าสอบ</th>
+                                <th class="px-6 py-4 text-right">คะแนนเฉลี่ย</th>
+                                <th class="px-6 py-4 text-right">คะแนนสูงสุด</th>
+                                <th class="px-6 py-4 text-right">ส่วนเบี่ยงเบนมาตรฐาน (SD)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="data-table-body" class="divide-y divide-slate-100 text-sm text-slate-600">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Table Pagination/Status footer -->
+                <div class="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p id="table-entries-status" class="text-xs text-slate-500">แสดง 0 ถึง 0 จากทั้งหมด 0 แถว</p>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-prev-page" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-all">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <span id="pagination-pages" class="text-xs font-medium text-slate-700">หน้า 1 จาก 1</span>
+                        <button id="btn-next-page" class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-all">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer Area -->
+    <footer class="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400">
+        <p>© 2026 O-NET Analytics Center. ข้อมูลทั้งหมดสอดคล้องตามมาตรฐานรายงานทางการศึกษา</p>
+    </footer>
+
+    <!-- Core Scripting -->
+    <script>
+        // Default Mock/Demo Data (Based on user upload snippets for beautiful initial state)
+        const demoData = [
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กรุงเทพมหานคร", SBJ_NAME: "ภาษาไทย", STUDENT_CNT: 65271, SD_SCORE: 15.17, AVG_SCORE: 61.65, MED_SCORE: 63.5, MOD_SCORE: 66.5, MIN_SCORE: 0.5, MAX_SCORE: 99.25 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กรุงเทพมหานคร", SBJ_NAME: "ภาษาอังกฤษ", STUDENT_CNT: 65268, SD_SCORE: 22.84, AVG_SCORE: 51.24, MED_SCORE: 45.0, MOD_SCORE: 30.0, MIN_SCORE: 2.5, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กรุงเทพมหานคร", SBJ_NAME: "คณิตศาสตร์", STUDENT_CNT: 65258, SD_SCORE: 23.09, AVG_SCORE: 44.82, MED_SCORE: 40.0, MOD_SCORE: 30.0, MIN_SCORE: 0.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กรุงเทพมหานคร", SBJ_NAME: "วิทยาศาสตร์", STUDENT_CNT: 65269, SD_SCORE: 13.69, AVG_SCORE: 43.93, MED_SCORE: 43.5, MOD_SCORE: 41.0, MIN_SCORE: 5.5, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กลาง (ยกเว้นกรุงเทพมหานคร)", SBJ_NAME: "ภาษาไทย", STUDENT_CNT: 151859, SD_SCORE: 15.11, AVG_SCORE: 56.72, MED_SCORE: 58.0, MOD_SCORE: 61.75, MIN_SCORE: 2.5, MAX_SCORE: 99 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กลาง (ยกเว้นกรุงเทพมหานคร)", SBJ_NAME: "ภาษาอังกฤษ", STUDENT_CNT: 151800, SD_SCORE: 18.22, AVG_SCORE: 38.45, MED_SCORE: 35.0, MOD_SCORE: 28.0, MIN_SCORE: 1.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กลาง (ยกเว้นกรุงเทพมหานคร)", SBJ_NAME: "คณิตศาสตร์", STUDENT_CNT: 151750, SD_SCORE: 19.34, AVG_SCORE: 32.12, MED_SCORE: 28.0, MOD_SCORE: 20.0, MIN_SCORE: 0.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2561", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "กลาง (ยกเว้นกรุงเทพมหานคร)", SBJ_NAME: "วิทยาศาสตร์", STUDENT_CNT: 151820, SD_SCORE: 11.23, AVG_SCORE: 36.80, MED_SCORE: 35.5, MOD_SCORE: 34.0, MIN_SCORE: 2.0, MAX_SCORE: 98.5 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออก", SBJ_NAME: "ภาษาไทย", STUDENT_CNT: 52400, SD_SCORE: 17.46, AVG_SCORE: 49.55, MED_SCORE: 49.5, MOD_SCORE: 53.0, MIN_SCORE: 0.0, MAX_SCORE: 98.5 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออก", SBJ_NAME: "ภาษาอังกฤษ", STUDENT_CNT: 52392, SD_SCORE: 20.79, AVG_SCORE: 36.02, MED_SCORE: 28.13, MOD_SCORE: 25.0, MIN_SCORE: 0.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออก", SBJ_NAME: "คณิตศาสตร์", STUDENT_CNT: 52389, SD_SCORE: 18.01, AVG_SCORE: 25.73, MED_SCORE: 20.13, MOD_SCORE: 13.0, MIN_SCORE: 0.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออก", SBJ_NAME: "วิทยาศาสตร์", STUDENT_CNT: 52389, SD_SCORE: 14.92, AVG_SCORE: 36.38, MED_SCORE: 35.0, MOD_SCORE: 30.0, MIN_SCORE: 0.0, MAX_SCORE: 100 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออกเฉียงเหนือ", SBJ_NAME: "ภาษาไทย", STUDENT_CNT: 176727, SD_SCORE: 16.83, AVG_SCORE: 45.79, MED_SCORE: 45.0, MOD_SCORE: 49.0, MIN_SCORE: 0.0, MAX_SCORE: 98.5 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออกเฉียงเหนือ", SBJ_NAME: "ภาษาอังกฤษ", STUDENT_CNT: 176700, SD_SCORE: 18.15, AVG_SCORE: 29.50, MED_SCORE: 25.0, MOD_SCORE: 22.0, MIN_SCORE: 0.0, MAX_SCORE: 98.0 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออกเฉียงเหนือ", SBJ_NAME: "คณิตศาสตร์", STUDENT_CNT: 176680, SD_SCORE: 15.42, AVG_SCORE: 21.80, MED_SCORE: 18.0, MOD_SCORE: 12.0, MIN_SCORE: 0.0, MAX_SCORE: 96.5 },
+            { YEAR_COURSE: "2568", GRADE_NAME: "ชั้นประถมศึกษาปีที่ 6", REGION_NAME: "ตะวันออกเฉียงเหนือ", SBJ_NAME: "วิทยาศาสตร์", STUDENT_CNT: 176710, SD_SCORE: 12.11, AVG_SCORE: 31.40, MED_SCORE: 30.0, MOD_SCORE: 28.0, MIN_SCORE: 0.0, MAX_SCORE: 97.0 }
+        ];
+
+        // Global State
+        let currentDataset = [...demoData];
+        let filteredDataset = [...demoData];
+        
+        // Pagination state
+        let currentPage = 1;
+        const rowsPerPage = 5;
+
+        // Chart instances
+        let subjectChartInstance = null;
+        let regionChartInstance = null;
+        let yearlyTrendChartInstance = null;
+
+        // Elements
+        const csvFileInput = document.getElementById('csv-file-input');
+        const dataStatusBadge = document.getElementById('data-status-badge');
+        
+        const filterYear = document.getElementById('filter-year');
+        const filterGrade = document.getElementById('filter-grade');
+        const filterRegion = document.getElementById('filter-region');
+        const filterSubject = document.getElementById('filter-subject');
+        const btnResetFilters = document.getElementById('btn-reset-filters');
+
+        const kpiStudentCount = document.getElementById('kpi-student-count');
+        const kpiAvgScore = document.getElementById('kpi-avg-score');
+        const kpiMaxScore = document.getElementById('kpi-max-score');
+        const kpiMinScore = document.getElementById('kpi-min-score');
+
+        const tableSearch = document.getElementById('table-search');
+        const dataTableBody = document.getElementById('data-table-body');
+        const tableEntriesStatus = document.getElementById('table-entries-status');
+        const btnPrevPage = document.getElementById('btn-prev-page');
+        const btnNextPage = document.getElementById('btn-next-page');
+        const paginationPages = document.getElementById('pagination-pages');
+        const btnExportCsv = document.getElementById('btn-export-csv');
+
+        // Application Init
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initializeFilters(currentDataset);
+            updateDashboard();
+            setupEventListeners();
+        });
+
+        // Initialize Filter Dropdowns uniquely dynamically based on dataset
+        function initializeFilters(dataset) {
+            const years = [...new Set(dataset.map(row => row.YEAR_COURSE))].sort();
+            const grades = [...new Set(dataset.map(row => row.GRADE_NAME))].sort();
+            const regions = [...new Set(dataset.map(row => row.REGION_NAME))].sort();
+            const subjects = [...new Set(dataset.map(row => row.SBJ_NAME))].sort();
+
+            populateDropdown(filterYear, years);
+            populateDropdown(filterGrade, grades);
+            populateDropdown(filterRegion, regions);
+            populateDropdown(filterSubject, subjects);
+        }
+
+        function populateDropdown(selectElement, items) {
+            const currentSelected = selectElement.value;
+            selectElement.innerHTML = '<option value="">ทั้งหมด</option>';
+            items.forEach(item => {
+                if (item) {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    option.textContent = item;
+                    selectElement.appendChild(option);
+                }
+            });
+            // Preserve selection if it still exists
+            if (items.includes(currentSelected)) {
+                selectElement.value = currentSelected;
+            }
+        }
+
+        // Show elegant custom notifications instead of alert
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `flex items-center gap-3 p-4 rounded-xl shadow-lg border text-sm transition-all duration-300 transform translate-y-2 opacity-0 max-w-sm pointer-events-auto ${
+                type === 'success' 
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`;
+            
+            const iconName = type === 'success' ? 'check-circle' : 'alert-triangle';
+            toast.innerHTML = `
+                <i data-lucide="${iconName}" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="font-medium">${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            lucide.createIcons({ attrs: { class: 'w-5 h-5 flex-shrink-0' } });
+            
+            // Trigger animation
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+                toast.classList.add('translate-y-0', 'opacity-100');
+            }, 50);
+
+            // Hide and remove
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Setup Event Listeners
+        function setupEventListeners() {
+            // Dropdown filter changes
+            [filterYear, filterGrade, filterRegion, filterSubject].forEach(el => {
+                el.addEventListener('change', () => {
+                    currentPage = 1;
+                    filterData();
+                });
+            });
+
+            // Table search
+            tableSearch.addEventListener('input', () => {
+                currentPage = 1;
+                filterData();
+            });
+
+            // Reset filters button
+            btnResetFilters.addEventListener('click', () => {
+                filterYear.value = '';
+                filterGrade.value = '';
+                filterRegion.value = '';
+                filterSubject.value = '';
+                tableSearch.value = '';
+                currentPage = 1;
+                filterData();
+                showToast("ล้างตัวกรองทั้งหมดเรียบร้อยแล้ว", "success");
+            });
+
+            // Pagination button events
+            btnPrevPage.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    updateTable();
+                }
+            });
+
+            btnNextPage.addEventListener('click', () => {
+                const totalPages = Math.ceil(filteredDataset.length / rowsPerPage);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    updateTable();
+                }
+            });
+
+            // Export to CSV
+            btnExportCsv.addEventListener('click', exportFilteredToCSV);
+
+            // Drag and drop CSV handlers
+            const dragArea = csvFileInput.closest('label');
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dragArea.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dragArea.classList.add('border-indigo-500', 'bg-indigo-50/20');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dragArea.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dragArea.classList.remove('border-indigo-500', 'bg-indigo-50/20');
+                }, false);
+            });
+
+            dragArea.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length) {
+                    csvFileInput.files = files;
+                    handleFileUpload(files[0]);
+                }
+            });
+
+            csvFileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    handleFileUpload(e.target.files[0]);
+                }
+            });
+        }
+
+        // File upload process
+        function handleFileUpload(file) {
+            if (!file.name.endsWith('.csv')) {
+                showToast('รองรับเฉพาะไฟล์ประเภท .csv เท่านั้น', 'error');
+                return;
+            }
+
+            Papa.parse(file, {
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const parsedData = results.data;
+                    
+                    // Validate columns broadly based on expected format
+                    const expectedColumns = ['YEAR_COURSE', 'GRADE_NAME', 'REGION_NAME', 'SBJ_NAME'];
+                    const fileColumns = results.meta.fields || [];
+                    const hasRequiredCols = expectedColumns.every(col => fileColumns.includes(col));
+
+                    if (!hasRequiredCols && parsedData.length > 0) {
+                        showToast('โครงสร้างตารางข้อมูลไม่ถูกต้อง โปรดตรวจสอบชื่อคอลัมน์ใน CSV', 'error');
+                        return;
+                    }
+
+                    // Process dynamic scoring typing just in case they are parsed as strings
+                    const processed = parsedData.map(row => ({
+                        YEAR_COURSE: String(row.YEAR_COURSE || ''),
+                        GRADE_NAME: String(row.GRADE_NAME || ''),
+                        REGION_NAME: String(row.REGION_NAME || ''),
+                        SBJ_NAME: String(row.SBJ_NAME || ''),
+                        STUDENT_CNT: Number(row.STUDENT_CNT || 0),
+                        SD_SCORE: Number(row.SD_SCORE || 0),
+                        AVG_SCORE: Number(row.AVG_SCORE || 0),
+                        MED_SCORE: Number(row.MED_SCORE || 0),
+                        MOD_SCORE: Number(row.MOD_SCORE || 0),
+                        MIN_SCORE: Number(row.MIN_SCORE || 0),
+                        MAX_SCORE: Number(row.MAX_SCORE || 0)
+                    }));
+
+                    currentDataset = processed;
+                    currentPage = 1;
+                    
+                    // Update dropdown lists with new data properties
+                    initializeFilters(currentDataset);
+                    
+                    // Update status badge UI
+                    dataStatusBadge.className = "inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200";
+                    dataStatusBadge.innerHTML = `
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        เชื่อมต่อข้อมูลจริงสำเร็จ (${currentDataset.length} แถว)
+                    `;
+
+                    filterData();
+                    showToast(`โหลดไฟล์ข้อมูลสำเร็จ ประมวลผลเสร็จสิ้นเรียบร้อยแล้ว`, 'success');
+                },
+                error: function() {
+                    showToast('เกิดข้อผิดพลาดระหว่างการอ่านไฟล์ข้อมูล CSV', 'error');
+                }
+            });
+        }
+
+        // Apply drop-down and text filters
+        function filterData() {
+            const yearVal = filterYear.value;
+            const gradeVal = filterGrade.value;
+            const regionVal = filterRegion.value;
+            const subjVal = filterSubject.value;
+            const searchVal = tableSearch.value.trim().toLowerCase();
+
+            filteredDataset = currentDataset.filter(row => {
+                const matchYear = !yearVal || row.YEAR_COURSE === yearVal;
+                const matchGrade = !gradeVal || row.GRADE_NAME === gradeVal;
+                const matchRegion = !regionVal || row.REGION_NAME === regionVal;
+                const matchSubject = !subjVal || row.SBJ_NAME === subjVal;
+                
+                const matchSearch = !searchVal || 
+                    (row.REGION_NAME && row.REGION_NAME.toLowerCase().includes(searchVal)) ||
+                    (row.SBJ_NAME && row.SBJ_NAME.toLowerCase().includes(searchVal)) ||
+                    (row.GRADE_NAME && row.GRADE_NAME.toLowerCase().includes(searchVal));
+
+                return matchYear && matchGrade && matchRegion && matchSubject && matchSearch;
+            });
+
+            updateDashboard();
+        }
+
+        // Major UI orchestrator for charts, KPIs, and table
+        function updateDashboard() {
+            updateKPIs();
+            renderSubjectChart();
+            renderRegionChart();
+            renderYearlyTrendChart();
+            updateTable();
+        }
+
+        // KPI calculations
+        function updateKPIs() {
+            if (filteredDataset.length === 0) {
+                kpiStudentCount.textContent = '0';
+                kpiAvgScore.textContent = '0.00';
+                kpiMaxScore.textContent = '0.00';
+                kpiMinScore.textContent = '0.00';
+                return;
+            }
+
+            const totalStudents = filteredDataset.reduce((sum, row) => sum + (row.STUDENT_CNT || 0), 0);
+            
+            // Weighted Average Score calculation
+            let weightedScoreSum = 0;
+            let studentSum = 0;
+            filteredDataset.forEach(row => {
+                if (row.AVG_SCORE && row.STUDENT_CNT) {
+                    weightedScoreSum += row.AVG_SCORE * row.STUDENT_CNT;
+                    studentSum += row.STUDENT_CNT;
+                }
+            });
+            const weightedAverage = studentSum > 0 ? (weightedScoreSum / studentSum) : 0;
+
+            const maxScore = Math.max(...filteredDataset.map(row => row.AVG_SCORE || 0));
+            const minScore = Math.min(...filteredDataset.map(row => row.AVG_SCORE || 0));
+
+            // Populate cards
+            kpiStudentCount.textContent = totalStudents.toLocaleString();
+            kpiAvgScore.textContent = weightedAverage.toFixed(2);
+            kpiMaxScore.textContent = isFinite(maxScore) ? maxScore.toFixed(2) : '0.00';
+            kpiMinScore.textContent = isFinite(minScore) ? minScore.toFixed(2) : '0.00';
+        }
+
+        // Draw Subject Performance Chart
+        function renderSubjectChart() {
+            const ctx = document.getElementById('subjectChart').getContext('2d');
+            
+            // Aggregate weighted average for each subject in current filtered set
+            const subjects = [...new Set(filteredDataset.map(row => row.SBJ_NAME))];
+            const dataPoints = subjects.map(sbj => {
+                const subRows = filteredDataset.filter(row => row.SBJ_NAME === sbj);
+                let scoreSum = 0;
+                let stdSum = 0;
+                subRows.forEach(r => {
+                    scoreSum += (r.AVG_SCORE || 0) * (r.STUDENT_CNT || 0);
+                    stdSum += (r.STUDENT_CNT || 0);
+                });
+                return stdSum > 0 ? (scoreSum / stdSum) : 0;
+            });
+
+            if (subjectChartInstance) {
+                subjectChartInstance.destroy();
+            }
+
+            subjectChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: subjects,
+                    datasets: [{
+                        label: 'คะแนนเฉลี่ยจำแนกตามวิชา',
+                        data: dataPoints,
+                        backgroundColor: [
+                            'rgba(79, 70, 229, 0.85)',  // Indigo
+                            'rgba(59, 130, 246, 0.85)',  // Blue
+                            'rgba(16, 185, 129, 0.85)',  // Emerald
+                            'rgba(245, 158, 11, 0.85)'   // Amber
+                        ],
+                        borderColor: [
+                            'rgb(79, 70, 229)',
+                            'rgb(59, 130, 246)',
+                            'rgb(16, 185, 129)',
+                            'rgb(245, 158, 11)'
+                        ],
+                        borderWidth: 1.5,
+                        borderRadius: 8,
+                        barThickness: 45
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `คะแนนเฉลี่ย: ${context.parsed.y.toFixed(2)} คะแนน`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { family: 'Sarabun' } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Sarabun', weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Draw Region Radar/Doughnut Chart
+        function renderRegionChart() {
+            const ctx = document.getElementById('regionChart').getContext('2d');
+            
+            const regions = [...new Set(filteredDataset.map(row => row.REGION_NAME))];
+            const dataPoints = regions.map(reg => {
+                const regRows = filteredDataset.filter(row => row.REGION_NAME === reg);
+                let scoreSum = 0;
+                let stdSum = 0;
+                regRows.forEach(r => {
+                    scoreSum += (r.AVG_SCORE || 0) * (r.STUDENT_CNT || 0);
+                    stdSum += (r.STUDENT_CNT || 0);
+                });
+                return stdSum > 0 ? (scoreSum / stdSum) : 0;
+            });
+
+            if (regionChartInstance) {
+                regionChartInstance.destroy();
+            }
+
+            // Using PolarArea chart for modern aesthetic on regional breakdown
+            regionChartInstance = new Chart(ctx, {
+                type: 'polarArea',
+                data: {
+                    labels: regions,
+                    datasets: [{
+                        data: dataPoints,
+                        backgroundColor: [
+                            'rgba(99, 102, 241, 0.7)',
+                            'rgba(244, 63, 94, 0.7)',
+                            'rgba(34, 197, 94, 0.7)',
+                            'rgba(234, 179, 8, 0.7)',
+                            'rgba(168, 85, 247, 0.7)',
+                            'rgba(236, 72, 153, 0.7)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { font: { family: 'Sarabun', size: 11 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `คะแนนเฉลี่ยของภูมิภาค: ${context.parsed.r.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        r: {
+                            ticks: { display: false },
+                            grid: { color: '#f1f5f9' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Draw Line chart showing O-NET Performance Trend
+        function renderYearlyTrendChart() {
+            const ctx = document.getElementById('yearlyTrendChart').getContext('2d');
+            
+            // Build trends over all years inside current filtered datasets
+            const years = [...new Set(filteredDataset.map(row => row.YEAR_COURSE))].sort();
+            const subjects = [...new Set(filteredDataset.map(row => row.SBJ_NAME))];
+
+            const colors = {
+                'ภาษาไทย': '#4f46e5',
+                'ภาษาอังกฤษ': '#3b82f6',
+                'คณิตศาสตร์': '#10b981',
+                'วิทยาศาสตร์': '#f59e0b'
+            };
+
+            const datasets = subjects.map(subj => {
+                const yearlyData = years.map(yr => {
+                    const rowMatch = filteredDataset.filter(row => row.YEAR_COURSE === yr && row.SBJ_NAME === subj);
+                    if (rowMatch.length === 0) return null;
+                    let scores = 0;
+                    let students = 0;
+                    rowMatch.forEach(r => {
+                        scores += (r.AVG_SCORE || 0) * (r.STUDENT_CNT || 0);
+                        students += (r.STUDENT_CNT || 0);
+                    });
+                    return students > 0 ? (scores / students) : null;
+                });
+
+                return {
+                    label: subj,
+                    data: yearlyData,
+                    borderColor: colors[subj] || '#64748b',
+                    backgroundColor: colors[subj] ? colors[subj] + '15' : '#64748b15',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    fill: true,
+                    pointBackgroundColor: colors[subj] || '#64748b',
+                    pointHoverRadius: 6
+                };
+            });
+
+            if (yearlyTrendChartInstance) {
+                yearlyTrendChartInstance.destroy();
+            }
+
+            yearlyTrendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: years.map(y => `ปี ${y}`),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { font: { family: 'Sarabun', weight: 'bold' } }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: (context) => `เฉลี่ย (${context.dataset.label}): ${context.parsed.y.toFixed(2)} คะแนน`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { family: 'Sarabun' } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Sarabun' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render & Update detailed records table
+        function updateTable() {
+            dataTableBody.innerHTML = '';
+            
+            const totalRows = filteredDataset.length;
+            const totalPages = Math.ceil(totalRows / rowsPerPage) || 1;
+            
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            const startIdx = (currentPage - 1) * rowsPerPage;
+            const endIdx = Math.min(startIdx + rowsPerPage, totalRows);
+            const currentRows = filteredDataset.slice(startIdx, endIdx);
+
+            if (currentRows.length === 0) {
+                dataTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center py-8 text-slate-400">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="inbox" class="w-8 h-8"></i>
+                                <span>ไม่พบข้อมูลที่ตรงกับเงื่อนไขการกรอง</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                lucide.createIcons();
+                tableEntriesStatus.textContent = `แสดง 0 ถึง 0 จากทั้งหมด 0 แถว`;
+                btnPrevPage.disabled = true;
+                btnNextPage.disabled = true;
+                paginationPages.textContent = `หน้า 1 จาก 1`;
+                return;
+            }
+
+            currentRows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-medium text-slate-900">${row.YEAR_COURSE || '-'}</td>
+                    <td class="px-6 py-4">${row.GRADE_NAME || '-'}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center gap-1.5 py-0.5 px-2 rounded-md text-xs font-medium bg-slate-100 text-slate-800">
+                            ${row.REGION_NAME || '-'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 font-semibold">${row.SBJ_NAME || '-'}</td>
+                    <td class="px-6 py-4 text-right font-mono">${(row.STUDENT_CNT || 0).toLocaleString()}</td>
+                    <td class="px-6 py-4 text-right font-mono font-bold text-indigo-600">${(row.AVG_SCORE || 0).toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right font-mono text-emerald-600">${(row.MAX_SCORE || 0).toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right font-mono text-slate-400">${(row.SD_SCORE || 0).toFixed(2)}</td>
+                `;
+                dataTableBody.appendChild(tr);
+            });
+
+            // Update Pagination display
+            tableEntriesStatus.textContent = `แสดง ${startIdx + 1} ถึง ${endIdx} จากทั้งหมด ${totalRows} แถว`;
+            paginationPages.textContent = `หน้า ${currentPage} จาก ${totalPages}`;
+
+            btnPrevPage.disabled = currentPage === 1;
+            btnNextPage.disabled = currentPage === totalPages;
+        }
+
+        // Export current filtered table view dataset into CSV download
+        function exportFilteredToCSV() {
+            if (filteredDataset.length === 0) {
+                showToast("ไม่มีข้อมูลให้ออกรายงาน", "error");
+                return;
+            }
+
+            const headers = ['YEAR_COURSE', 'GRADE_NAME', 'REGION_NAME', 'SBJ_NAME', 'STUDENT_CNT', 'SD_SCORE', 'AVG_SCORE', 'MED_SCORE', 'MOD_SCORE', 'MIN_SCORE', 'MAX_SCORE'];
+            
+            let csvContent = "data:text/csv;charset=utf-8,\ufeff"; // Support Thai characters UTF-8 Excel BOM
+            csvContent += headers.join(",") + "\r\n";
+
+            filteredDataset.forEach(row => {
+                const line = headers.map(header => {
+                    let cellVal = row[header] === undefined || row[header] === null ? '' : row[header];
+                    // If string contains comma, wrap with quotes
+                    if (typeof cellVal === 'string' && cellVal.includes(',')) {
+                        cellVal = `"${cellVal}"`;
+                    }
+                    return cellVal;
+                }).join(",");
+                csvContent += line + "\r\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `ONET_Filtered_Report_${Date.now()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("ส่งออกไฟล์ CSV สำเร็จเรียบร้อยแล้ว", "success");
+        }
+    </script>
+</body>
+</html>
